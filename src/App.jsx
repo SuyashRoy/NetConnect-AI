@@ -8,6 +8,7 @@ import { Moon, Sun } from 'lucide-react'
 function App() {
   const [isDarkMode, setIsDarkMode] = useState(false)
   const [userAddress, setUserAddress] = useState('')
+  const [geocodeData, setGeocodeData] = useState(null)
 
   // Initialize dark mode from localStorage or system preference
   useEffect(() => {
@@ -23,7 +24,7 @@ function App() {
   const toggleDarkMode = () => {
     const newMode = !isDarkMode
     setIsDarkMode(newMode)
-    
+
     if (newMode) {
       document.documentElement.classList.add('dark')
       localStorage.setItem('theme', 'dark')
@@ -31,6 +32,11 @@ function App() {
       document.documentElement.classList.remove('dark')
       localStorage.setItem('theme', 'light')
     }
+  }
+
+  const handleAddressSubmit = (address, geocodeResult) => {
+    setUserAddress(address)
+    setGeocodeData(geocodeResult)
   }
 
   return (
@@ -53,24 +59,27 @@ function App() {
         </div>
 
         <Routes>
-          <Route 
-            path="/" 
+          <Route
+            path="/"
             element={
-              <SearchPage 
-                onAddressSubmit={setUserAddress}
+              <SearchPage
+                onAddressSubmit={handleAddressSubmit}
                 userAddress={userAddress}
               />
-            } 
+            }
           />
-          <Route 
-            path="/offerings" 
+          <Route
+            path="/offerings"
             element={
               userAddress ? (
-                <OfferingsPage userAddress={userAddress} />
+                <OfferingsPage
+                  userAddress={userAddress}
+                  geocodeData={geocodeData}
+                />
               ) : (
                 <Navigate to="/" replace />
               )
-            } 
+            }
           />
         </Routes>
       </div>
