@@ -73,14 +73,6 @@ The SearchPage now includes **Google Places Autocomplete**:
 
 ## Environment Setup
 
-### Your Current `.env` File
-
-Based on your `.env.example`, you already have:
-```env
-VITE_GOOGLE_MAPS_API_KEY=AIzaSyDYDtt9HZq5nY-WHvyHTKSBMQo223OELUQ
-VITE_GEMINI_API_KEY=AIzaSyB-OSlvfqDdDZHzAMVofucIwIuJle7n4Co
-```
-
 ✅ **This is perfect!** The Google Maps API key you have includes:
 - ✓ Geocoding API
 - ✓ Places API (autocomplete & reviews)
@@ -89,12 +81,6 @@ VITE_GEMINI_API_KEY=AIzaSyB-OSlvfqDdDZHzAMVofucIwIuJle7n4Co
 ### If You Need to Update Your Actual `.env`
 
 Copy the values from `.env.example` to your actual `.env` file:
-
-```bash
-# If you have a .env file, update it:
-VITE_GOOGLE_MAPS_API_KEY=AIzaSyDYDtt9HZq5nY-WHvyHTKSBMQo223OELUQ
-VITE_GEMINI_API_KEY=AIzaSyB-OSlvfqDdDZHzAMVofucIwIuJle7n4Co
-```
 
 ---
 
@@ -243,9 +229,6 @@ Update it to match the new format:
 # VITE_MAPBOX_ACCESS_TOKEN=...
 # VITE_GOOGLE_PLACES_API_KEY=...
 
-# Use these new variables:
-VITE_GOOGLE_MAPS_API_KEY=AIzaSyDYDtt9HZq5nY-WHvyHTKSBMQo223OELUQ
-VITE_GEMINI_API_KEY=AIzaSyB-OSlvfqDdDZHzAMVofucIwIuJle7n4Co
 ```
 
 Then restart:
