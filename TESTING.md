@@ -146,7 +146,7 @@ If autocomplete still doesn't work, you can test the API directly:
 ### Test Geocoding API
 Open browser console and run:
 ```javascript
-fetch('https://maps.googleapis.com/maps/api/geocode/json?address=New+York&key=AIzaSyDYDtt9HZq5nY-WHvyHTKSBMQo223OELUQ')
+fetch('https://maps.googleapis.com/maps/api/geocode/json?address=New+York&key=AIza....OELUQ')
   .then(r => r.json())
   .then(d => console.log(d))
 ```
@@ -155,7 +155,7 @@ Expected result: `status: "OK"` with geocoded results
 
 ### Test Places API
 ```javascript
-fetch('https://maps.googleapis.com/maps/api/place/textsearch/json?query=verizon+store&location=40.7128,-74.0060&radius=5000&key=AIzaSyDYDtt9HZq5nY-WHvyHTKSBMQo223OELUQ')
+fetch('https://maps.googleapis.com/maps/api/place/textsearch/json?query=verizon+store&location=40.7128,-74.0060&radius=5000&key=AIzaSyDYDtt9...3OELUQ')
   .then(r => r.json())
   .then(d => console.log(d))
 ```
