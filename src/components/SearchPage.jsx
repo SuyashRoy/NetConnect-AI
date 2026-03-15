@@ -23,65 +23,11 @@ const SearchPage = ({ onAddressSubmit, userAddress }) => {
     // Skip autocomplete initialization if using ZIP only
     if (useZipOnly) return;
 
-    // Load Google Maps script if not already loaded
-    const loadGoogleMapsScript = () => {
-      // Check if Google Maps is already loaded
-      if (window.google && window.google.maps && window.google.maps.places) {
-        console.log('Google Maps already loaded, initializing autocomplete...');
-        initializeAutocomplete();
-        return;
-      }
-
-      // Check if script is already being loaded
-      const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
-      if (existingScript) {
-        console.log('Google Maps script already loading, waiting...');
-        // Wait for it to load
-        let attempts = 0;
-        const maxAttempts = 50; // 5 seconds max
-        const checkGoogleMaps = setInterval(() => {
-          attempts++;
-          if (window.google && window.google.maps && window.google.maps.places) {
-            clearInterval(checkGoogleMaps);
-            console.log('Google Maps loaded successfully');
-            initializeAutocomplete();
-          } else if (attempts >= maxAttempts) {
-            clearInterval(checkGoogleMaps);
-            console.error('Google Maps failed to load after 5 seconds');
-          }
-        }, 100);
-        return;
-      }
-
-      // Load the script
-      try {
-        const apiKey = getGoogleMapsKey();
-        console.log('Loading Google Maps script with API key...');
-
-        const script = document.createElement('script');
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&callback=initMap`;
-        script.async = true;
-        script.defer = true;
-
-        // Global callback
-        window.initMap = () => {
-          console.log('Google Maps callback triggered');
-          initializeAutocomplete();
-        };
-
-        script.onerror = (error) => {
-          console.error('Failed to load Google Maps script:', error);
-          console.warn('Autocomplete will be disabled. You can still use ZIP code input.');
-        };
-
-        document.head.appendChild(script);
-      } catch (error) {
-        console.warn('Google Maps API key not configured:', error.message);
-        console.info('Autocomplete disabled. Use ZIP code input for location search.');
-      }
-    };
+    let isMounted = true;
 
     const initializeAutocomplete = () => {
+      if (!isMounted) return;
+
       if (!inputRef.current) {
         console.warn('Input ref not available for autocomplete');
         return;
@@ -117,11 +63,78 @@ const SearchPage = ({ onAddressSubmit, userAddress }) => {
           }
         });
 
-        setAutocomplete(autocompleteInstance);
-        console.log('✓ Google Places Autocomplete initialized successfully');
+        if (isMounted) {
+          setAutocomplete(autocompleteInstance);
+          console.log('✓ Google Places Autocomplete initialized successfully');
+        }
       } catch (error) {
         console.error('Failed to initialize autocomplete:', error);
         console.info('Autocomplete unavailable. You can still type addresses manually or use ZIP code.');
+      }
+    };
+
+    // Load Google Maps script if not already loaded
+    const loadGoogleMapsScript = () => {
+      // Check if Google Maps is already loaded
+      if (window.google && window.google.maps && window.google.maps.places) {
+        console.log('✓ Google Maps already loaded, initializing autocomplete...');
+        initializeAutocomplete();
+        return;
+      }
+
+      // Check if script is already being loaded
+      const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
+      if (existingScript) {
+        console.log('Google Maps script already in DOM, waiting for load...');
+        // Wait for it to load
+        let attempts = 0;
+        const maxAttempts = 50; // 5 seconds max
+        const checkGoogleMaps = setInterval(() => {
+          attempts++;
+          if (window.google && window.google.maps && window.google.maps.places) {
+            clearInterval(checkGoogleMaps);
+            console.log('✓ Google Maps loaded successfully');
+            initializeAutocomplete();
+          } else if (attempts >= maxAttempts) {
+            clearInterval(checkGoogleMaps);
+            console.error('❌ Google Maps failed to load after 5 seconds');
+          }
+        }, 100);
+        return;
+      }
+
+      // Load the script
+      try {
+        const apiKey = getGoogleMapsKey();
+        console.log('📡 Loading Google Maps script with API key...');
+
+        const script = document.createElement('script');
+        script.id = 'google-maps-script';
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+        script.async = true;
+        script.defer = true;
+
+        script.onload = () => {
+          console.log('✓ Google Maps script loaded');
+          // Small delay to ensure places library is ready
+          setTimeout(() => {
+            if (window.google && window.google.maps && window.google.maps.places) {
+              initializeAutocomplete();
+            } else {
+              console.error('❌ Google Maps Places library not available after load');
+            }
+          }, 100);
+        };
+
+        script.onerror = (error) => {
+          console.error('❌ Failed to load Google Maps script:', error);
+          console.warn('⚠️  Autocomplete will be disabled. You can still use ZIP code input.');
+        };
+
+        document.head.appendChild(script);
+      } catch (error) {
+        console.warn('⚠️  Google Maps API key not configured:', error.message);
+        console.info('💡 Autocomplete disabled. Use ZIP code input for location search.');
       }
     };
 
@@ -129,6 +142,7 @@ const SearchPage = ({ onAddressSubmit, userAddress }) => {
 
     // Cleanup
     return () => {
+      isMounted = false;
       if (autocomplete && window.google?.maps?.event) {
         window.google.maps.event.clearInstanceListeners(autocomplete);
       }
