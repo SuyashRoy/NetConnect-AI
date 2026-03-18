@@ -1,6 +1,7 @@
 /**
  * Multi-Provider API Service
  * Aggregates offerings from multiple ISP providers
+ * Strategy priority: FCC DB Pipeline → ZIP-based → FCC API → Individual providers
  */
 
 import { fetchProviderPlans as fetchATT } from './providers/attProvider';
@@ -9,6 +10,8 @@ import { fetchProviderPlans as fetchXfinity } from './providers/xfinityProvider'
 import { fetchProviderPlans as fetchTMobile } from './providers/tmobileProvider';
 import { fetchProviderPlans as fetchSpectrum } from './providers/spectrumProvider';
 import { fetchFCCProviders, fetchProvidersByZip } from './fccBroadbandApi';
+import { lookupByCoordinates, transformPipelineToPlans } from './broadbandPipelineApi';
+import { offeringsCache } from '../utils/cache';
 
 /**
  * Fetch plans from all available providers
@@ -21,12 +24,65 @@ export const fetchAllProviders = async (address, coordinates, geocodeData) => {
   console.log('Fetching plans from all providers for:', address, coordinates);
   console.log('Geocode data:', geocodeData);
 
+  // Check offerings cache first (keyed on coordinates)
+  if (coordinates && coordinates.length === 2) {
+    const cacheKey = `${coordinates[0].toFixed(4)},${coordinates[1].toFixed(4)}`;
+    try {
+      const cached = await offeringsCache.get(cacheKey);
+      if (cached) {
+        console.log('✓ Returning cached offerings result');
+        return cached;
+      }
+    } catch (e) {
+      console.warn('Offerings cache check failed:', e.message);
+    }
+  }
+
   const startTime = Date.now();
   let allPlans = [];
   let dataSource = 'mock';
+  let pipelineMetadata = null;
 
-  // Strategy 1: Try ZIP-based lookup if available (most reliable)
-  if (geocodeData?.zipCode || geocodeData?.placeContext?.zip) {
+  // Strategy 0 (PRIMARY): FCC BDC Database Pipeline via backend
+  // Uses: coordinates → Census Block FIPS → PostgreSQL query
+  if (coordinates && coordinates.length === 2) {
+    console.log('Trying FCC BDC Database Pipeline (primary strategy)...');
+
+    try {
+      const pipelineResult = await lookupByCoordinates(coordinates[0], coordinates[1]);
+
+      if (pipelineResult.covered && pipelineResult.providers && pipelineResult.providers.length > 0) {
+        allPlans = transformPipelineToPlans(pipelineResult);
+        dataSource = 'fcc-bdc-database';
+        pipelineMetadata = {
+          censusBlock: pipelineResult.censusBlock,
+          state: pipelineResult.state,
+          stateName: pipelineResult.stateName,
+          county: pipelineResult.county,
+          covered: pipelineResult.covered,
+          dataAsOf: pipelineResult.dataAsOf,
+          pipelineTimeMs: pipelineResult.pipelineTimeMs,
+          summary: pipelineResult.summary,
+          totalProviders: pipelineResult.totalProviders,
+          totalServices: pipelineResult.totalServices,
+        };
+        console.log(`✓ Found ${allPlans.length} plans via FCC BDC Database (${pipelineResult.totalProviders} providers, ${pipelineResult.pipelineTimeMs}ms)`);
+      } else if (!pipelineResult.covered) {
+        pipelineMetadata = {
+          covered: false,
+          message: pipelineResult.message,
+          state: pipelineResult.state,
+        };
+        console.log(`Pipeline: State not covered (${pipelineResult.state}). Falling back to other strategies.`);
+      }
+    } catch (error) {
+      console.warn('FCC BDC Pipeline unavailable:', error.message);
+      console.log('Backend may not be running. Falling back to other strategies.');
+    }
+  }
+
+  // Strategy 1: Try ZIP-based lookup if available
+  if (allPlans.length === 0 && (geocodeData?.zipCode || geocodeData?.placeContext?.zip)) {
     const zipCode = geocodeData.zipCode || geocodeData.placeContext.zip;
     console.log('Using ZIP-based provider lookup:', zipCode);
 
@@ -105,15 +161,24 @@ export const fetchAllProviders = async (address, coordinates, geocodeData) => {
 
   console.log(`✓ Final result: ${allPlans.length} plans from ${dataSource} in ${endTime - startTime}ms`);
 
-  return {
+  const result = {
     plans: allPlans,
     totalPlans: allPlans.length,
     providersChecked: 5,
     providersWithData: new Set(allPlans.map(p => p.provider)).size,
     dataSource: dataSource,
+    pipelineMetadata: pipelineMetadata,
     timestamp: new Date().toISOString(),
     fetchTime: endTime - startTime
   };
+
+  // Cache the result (fire-and-forget)
+  if (coordinates && coordinates.length === 2) {
+    const cacheKey = `${coordinates[0].toFixed(4)},${coordinates[1].toFixed(4)}`;
+    offeringsCache.set(cacheKey, result).catch(() => {});
+  }
+
+  return result;
 };
 
 /**

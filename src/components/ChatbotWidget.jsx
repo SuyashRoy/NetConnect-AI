@@ -10,13 +10,14 @@ import { Input } from './ui/input';
 import { Card, CardContent, CardHeader, CardFooter } from './ui/card';
 import { createChatSession, sendMessage, isGeminiAvailable } from '../services/geminiChatbot';
 
-const ChatbotWidget = ({ offerings, reviews, userAddress }) => {
+const ChatbotWidget = ({ offerings, reviews, reviewsLoading, userAddress, pipelineMetadata, dataSource }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [chatSession, setChatSession] = useState(null);
   const [error, setError] = useState(null);
+  const [reviewsIncorporated, setReviewsIncorporated] = useState(false);
   const messagesEndRef = useRef(null);
 
   // Check if Gemini is available
@@ -31,24 +32,55 @@ const ChatbotWidget = ({ offerings, reviews, userAddress }) => {
     scrollToBottom();
   }, [messages]);
 
-  // Initialize chat when widget opens
+  // Initialize chat when widget opens AND reviews are done loading
   useEffect(() => {
-    if (isOpen && !chatSession && offerings.length > 0 && geminiAvailable) {
+    if (isOpen && !chatSession && offerings.length > 0 && geminiAvailable && !reviewsLoading) {
       initializeChat();
     }
-  }, [isOpen, offerings, geminiAvailable]);
+  }, [isOpen, offerings, geminiAvailable, reviewsLoading]);
+
+  // Re-initialize chat session when reviews arrive after initial creation
+  useEffect(() => {
+    if (chatSession && !reviewsLoading && !reviewsIncorporated && reviews && Object.keys(reviews).length > 0) {
+      console.log('Reviews loaded after chat init — reinitializing session with full context');
+      setReviewsIncorporated(true);
+      reinitializeWithReviews();
+    }
+  }, [reviews, reviewsLoading, chatSession, reviewsIncorporated]);
+
+  const reinitializeWithReviews = async () => {
+    try {
+      const session = await createChatSession(offerings, userAddress, reviews || {}, pipelineMetadata, dataSource);
+      setChatSession(session);
+      // Keep existing messages but add a note
+      setMessages(prev => [...prev, {
+        text: "I've now loaded real customer reviews for the providers in your area. Ask me anything about what customers are saying!",
+        isUser: false,
+        timestamp: new Date()
+      }]);
+    } catch (err) {
+      console.error('Failed to reinitialize with reviews:', err);
+    }
+  };
 
   const initializeChat = async () => {
     setIsLoading(true);
     setError(null);
 
     try {
-      const session = await createChatSession(offerings, userAddress, reviews || {});
+      const hasReviews = reviews && Object.keys(reviews).length > 0;
+      if (hasReviews) setReviewsIncorporated(true);
+
+      const session = await createChatSession(offerings, userAddress, reviews || {}, pipelineMetadata, dataSource);
       setChatSession(session);
 
-      // Add welcome message
+      // Add welcome message with context awareness
+      const hasReviewData = reviews && Object.values(reviews).some(r => r.reviews?.length > 0);
+      const reviewNote = hasReviewData
+        ? " I also have real customer reviews to help guide my recommendations."
+        : "";
       setMessages([{
-        text: "Hi! I'm your ISP assistant powered by AI. I can help you choose the best internet provider for your needs. What's most important to you - speed, price, reliability, or something else?",
+        text: `Hi! I'm your ISP assistant powered by AI. I can see ${offerings.length} broadband plans available at your location.${reviewNote} What's most important to you — speed, price, reliability, or something else?`,
         isUser: false,
         timestamp: new Date()
       }]);
@@ -165,6 +197,15 @@ const ChatbotWidget = ({ offerings, reviews, userAddress }) => {
 
       {/* Messages */}
       <CardContent className="flex-1 overflow-y-auto space-y-4 py-4">
+        {/* Show preparing message while waiting for reviews to load */}
+        {!chatSession && reviewsLoading && (
+          <div className="flex justify-start">
+            <div className="max-w-[85%] rounded-lg px-4 py-2.5 bg-gray-100 dark:bg-gray-800 text-foreground border border-gray-200 dark:border-gray-700">
+              <p className="text-sm text-muted-foreground">Preparing assistant — loading customer reviews...</p>
+            </div>
+          </div>
+        )}
+
         {messages.map((msg, idx) => (
           <div
             key={idx}

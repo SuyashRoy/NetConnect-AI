@@ -29,46 +29,89 @@ const initializeGemini = () => {
 };
 
 /**
- * Generate system prompt with context about offerings and reviews
+ * Map technology codes to readable names
+ */
+const techCodeToName = (code) => {
+  const map = { 50: 'Fiber', 40: 'Cable', 10: 'DSL' };
+  return map[code] || (code ? `Tech ${code}` : null);
+};
+
+/**
+ * Generate system prompt with context about offerings, reviews, and pipeline metadata
  * @param {Array} offerings - Available ISP offerings
  * @param {string} userAddress - User's address
  * @param {object} reviews - Provider reviews map
+ * @param {object} pipelineMetadata - FCC pipeline metadata (may be null)
+ * @param {string} dataSource - Data source identifier
  * @returns {string} System prompt
  */
-const generateSystemPrompt = (offerings, userAddress, reviews) => {
+const generateSystemPrompt = (offerings, userAddress, reviews, pipelineMetadata, dataSource) => {
+  // Build data source context
+  let dataSourceContext = '';
+  if (dataSource === 'fcc-bdc-database' && pipelineMetadata) {
+    dataSourceContext = `
+**Data Source**: FCC Broadband Data Collection (official government data)
+- State: ${pipelineMetadata.stateName || pipelineMetadata.state}
+${pipelineMetadata.county ? `- County: ${pipelineMetadata.county}` : ''}
+- Census Block: ${pipelineMetadata.censusBlock}
+- Data as of: ${pipelineMetadata.dataAsOf || 'unknown'}
+- Total providers found: ${pipelineMetadata.totalProviders || 'N/A'}
+- Total service tiers: ${pipelineMetadata.totalServices || 'N/A'}
+- Note: FCC data reflects what providers REPORT they can offer at the census-block level. Actual availability at the exact address may vary. Prices are estimated ranges (FCC data does not include pricing).`;
+  } else if (dataSource) {
+    dataSourceContext = `
+**Data Source**: ${dataSource === 'zip-based' ? 'ZIP code lookup' : dataSource === 'fcc-api' ? 'FCC Broadband Map API' : 'Provider APIs'} (FCC database was not available for this location)
+- Note: This data may be less precise than FCC census-block-level data.`;
+  }
+
   // Format offerings information with detailed reviews
   const offeringsText = offerings.map((offering, idx) => {
     const reviewInfo = reviews[offering.provider];
 
-    let reviewSection = 'Customer Reviews: Not available';
+    // Technology info
+    const techName = techCodeToName(offering.technologyCode);
+    const techLine = techName ? `   - Connection Type: ${techName}` : '';
+    const latencyLine = offering.lowLatency ? '   - Low Latency: Yes (good for gaming/video calls)' : '';
+
+    // Speed details
+    const rawDownload = offering.maxDownloadMbps ? `${offering.maxDownloadMbps} Mbps` : offering.speed;
+    const rawUpload = offering.maxUploadMbps ? `${offering.maxUploadMbps} Mbps` : (offering.uploadSpeed || 'N/A');
+
+    // Reviews section
+    let reviewSection = '   Customer Reviews: No reviews available for this provider';
 
     if (reviewInfo && reviewInfo.reviews && reviewInfo.reviews.length > 0) {
       const reviewSummary = `Overall Rating: ${reviewInfo.overallRating}/5 stars (${reviewInfo.totalReviews} total reviews)`;
 
       // Include actual review text for AI analysis
       const customerReviews = reviewInfo.reviews.map((review, rIdx) =>
-        `   Review ${rIdx + 1}: "${review.text}" - ${review.author} (${review.rating}/5 stars, ${review.relativeTime})`
+        `      Review ${rIdx + 1}: "${review.text}" - ${review.author} (${review.rating}/5 stars, ${review.relativeTime})`
       ).join('\n');
 
-      reviewSection = `Customer Reviews:\n   ${reviewSummary}\n${customerReviews}`;
+      reviewSection = `   Customer Reviews:\n      ${reviewSummary}\n${customerReviews}`;
     }
 
     return `${idx + 1}. ${offering.name}
    - Provider: ${offering.provider}
-   - Download Speed: ${offering.speed}
-   - Upload Speed: ${offering.uploadSpeed || 'N/A'}
+   - Download Speed: ${rawDownload}
+   - Upload Speed: ${rawUpload}
+${techLine}${latencyLine}
    - Price: $${offering.price}/month
-   - Plan Rating: ${offering.rating}/5
    - Features: ${offering.features.join(', ')}
    - Availability: ${offering.availability}
-   - ${reviewSection}`;
+   - Data Source: ${offering.source || dataSource || 'unknown'}
+${reviewSection}`;
   }).join('\n\n');
+
+  // Determine if we have any reviews at all
+  const hasAnyReviews = Object.values(reviews).some(r => r.reviews?.length > 0);
 
   return `You are a helpful and knowledgeable ISP (Internet Service Provider) recommendation assistant for NetConnect AI, a broadband comparison platform.
 
 **User's Location**: ${userAddress}
+${dataSourceContext}
 
-**Available Internet Providers in this area**:
+**Available Internet Providers in this area** (${offerings.length} plans):
 
 ${offeringsText}
 
@@ -81,46 +124,44 @@ ${offeringsText}
    - Number of people/devices in household
    - Budget constraints
    - Need for high upload speeds (for video calls, content creation, etc.)
+   - Whether low latency matters (gaming, real-time video)
    - Contract preferences (month-to-month vs. annual)
 
-3. **Analyze Customer Reviews Deeply**:
+3. **Make Smart Recommendations Based on User Needs**:
+   - For gamers: Prioritize low-latency connections (Fiber > Cable > DSL) and upload speed
+   - For streamers/large households: Prioritize high download speeds
+   - For work from home: Prioritize reliability, upload speed, and low latency
+   - For budget-conscious: Find the best value at needed speed tiers
+   - For general browsing: Most plans will work, focus on price and reliability
+   - Always explain WHY a plan is a good fit for their specific use case
+
+4. **Understand Connection Types**:
+   - Fiber (tech code 50): Fastest, lowest latency, symmetric upload/download, best for gaming and WFH
+   - Cable (tech code 40): Good speeds, higher latency than fiber, upload speeds much lower than download
+   - DSL (tech code 10): Slowest, uses phone lines, but widely available${hasAnyReviews ? `
+
+5. **Analyze Customer Reviews Deeply**:
    - Read through the actual customer review text above
    - Identify common complaints or praise for each provider
-   - Notice patterns in customer feedback (reliability issues, great customer service, installation problems, etc.)
+   - Notice patterns in customer feedback (reliability, customer service, installation, etc.)
    - Use real customer quotes to support your recommendations
    - Be aware of recent vs. old reviews (check the relative time)
+   - If customers report frequent outages, mention it even if speeds look good
+   - Balance star ratings with the content of reviews
 
-4. **Make Data-Driven Recommendations**:
-   - Consider technical specs (speed, price) AND actual customer experiences
-   - If multiple customers complain about outages, mention reliability concerns
-   - If customers praise customer service, highlight that as a pro
-   - Balance star ratings with the content of reviews (sometimes a 4-star with great reviews beats a 4.5-star with complaints)
-   - Explain WHY you're recommending specific plans based on real feedback
-
-5. **Cite Specific Evidence**:
+6. **Cite Specific Evidence**:
    - Reference actual customer quotes from reviews when relevant
-   - Mention specific speeds, prices, and features
-   - Be transparent about what customers are saying
    - Example: "Based on customer reviews, AT&T customers mention [specific feedback]"
+   - Be transparent about what real customers are saying` : `
 
-6. **Be Honest About Trade-offs**:
-   - If customers report frequent outages, mention it even if speeds are good
-   - If installation is problematic based on reviews, warn about it
-   - If customer service gets poor reviews, factor that into recommendations
-   - Balance technical excellence with customer satisfaction
+5. **No Customer Reviews Available**:
+   - Customer reviews have not been loaded for these providers
+   - Focus your recommendations on technical specifications (speed, technology type, latency)
+   - Be transparent that you don't have customer experience data to reference`}
 
-7. **Don't Make Things Up**: Only reference information from the offerings and reviews above. If you don't have certain information, say so.
+${hasAnyReviews ? '7' : '6'}. **Don't Make Things Up**: Only reference information from the offerings and reviews above. If you don't have certain information (like exact pricing from FCC data), say so honestly.
 
-8. **Keep Responses Concise**: Aim for 3-5 sentences per response. Be helpful but not overwhelming.
-
-**Example Interaction Flow**:
-- Start by greeting and asking what's most important to them
-- Ask 1-2 follow-up questions to understand their needs
-- Provide 2-3 tailored recommendations with brief reasoning based on BOTH specs and customer reviews
-- Cite specific customer feedback when relevant (e.g., "Customers mention that Verizon has excellent reliability")
-- Answer any questions they have about specific plans
-
-**Important**: When recommending providers, prioritize customer satisfaction and real-world performance (from reviews) over just technical specifications. A slightly slower connection with excellent customer service and reliability is often better than the fastest speed with constant outages.
+${hasAnyReviews ? '8' : '7'}. **Keep Responses Concise**: Aim for 3-5 sentences per response unless the user asks for detailed comparisons.
 
 Start by greeting the user and asking what's most important to them when choosing an internet provider.`;
 };
@@ -130,12 +171,19 @@ Start by greeting the user and asking what's most important to them when choosin
  * @param {Array} offerings - Available ISP offerings
  * @param {string} userAddress - User's address
  * @param {object} reviews - Provider reviews map
+ * @param {object} pipelineMetadata - FCC pipeline metadata (may be null)
+ * @param {string} dataSource - Data source identifier
  * @returns {Promise<object>} Chat session
  */
-export const createChatSession = async (offerings, userAddress, reviews) => {
+export const createChatSession = async (offerings, userAddress, reviews, pipelineMetadata, dataSource) => {
   try {
     const model = initializeGemini();
-    const systemPrompt = generateSystemPrompt(offerings, userAddress, reviews);
+    const systemPrompt = generateSystemPrompt(offerings, userAddress, reviews, pipelineMetadata, dataSource);
+
+    const hasReviews = reviews && Object.values(reviews).some(r => r.reviews?.length > 0);
+    const reviewAck = hasReviews
+      ? "I have access to real customer reviews and will use them to support my recommendations with specific feedback from actual customers."
+      : "Customer reviews are not available right now, so I'll focus on technical specifications like speed, technology type, latency, and pricing to help the user choose.";
 
     // Start chat with system context
     const chat = model.startChat({
@@ -146,7 +194,7 @@ export const createChatSession = async (offerings, userAddress, reviews) => {
         },
         {
           role: "model",
-          parts: [{ text: "I understand. I'm ready to help users choose the best internet provider based on their needs. I will analyze both technical specifications AND actual customer review feedback to provide data-driven recommendations. I'll search through customer reviews to identify patterns in satisfaction, reliability, customer service quality, and real-world performance. I'll be conversational, ask relevant questions, and cite specific customer feedback when making recommendations." }],
+          parts: [{ text: `I understand. I'm ready to help users choose the best internet provider based on their needs. ${reviewAck} I'll be conversational, ask relevant questions, and make data-driven recommendations tailored to each user's specific requirements (streaming, gaming, WFH, budget, etc.).` }],
         },
       ],
       generationConfig: {

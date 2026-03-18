@@ -4,7 +4,7 @@ import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Wifi, Smartphone, Tv, Star, MapPin, DollarSign, Zap, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Wifi, Smartphone, Tv, Star, MapPin, DollarSign, Zap, AlertCircle, ChevronLeft, ChevronRight, Info, Database, Clock, Shield, Activity } from 'lucide-react'
 import { fetchAllProviders } from '../services/multiProviderApi'
 import { fetchMultipleProviderReviews } from '../services/googlePlacesReviews'
 import { geocodeAddress } from '../services/googleMapsGeocoding'
@@ -29,6 +29,8 @@ const OfferingsPage = ({ userAddress, geocodeData }) => {
   const [providerStats, setProviderStats] = useState(null)
   const [providerReviews, setProviderReviews] = useState({})
   const [reviewsLoading, setReviewsLoading] = useState(false)
+  const [pipelineMetadata, setPipelineMetadata] = useState(null)
+  const [dataSource, setDataSource] = useState(null)
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
@@ -48,6 +50,10 @@ const OfferingsPage = ({ userAddress, geocodeData }) => {
         fetchTime: providersData.fetchTime
       });
 
+      // Store pipeline metadata and data source
+      setPipelineMetadata(providersData.pipelineMetadata || null);
+      setDataSource(providersData.dataSource || null);
+
       // Convert plans to component format
       const formattedOfferings = providersData.plans.map(plan => ({
         id: plan.id,
@@ -62,7 +68,11 @@ const OfferingsPage = ({ userAddress, geocodeData }) => {
         availability: plan.availability,
         color: plan.color,
         provider: plan.provider,
-        source: plan.source
+        source: plan.source,
+        technologyCode: plan.technologyCode,
+        lowLatency: plan.lowLatency,
+        maxDownloadMbps: plan.maxDownloadMbps,
+        maxUploadMbps: plan.maxUploadMbps,
       }));
 
       return formattedOfferings;
@@ -244,7 +254,7 @@ const OfferingsPage = ({ userAddress, geocodeData }) => {
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-lg text-muted-foreground">Fetching real-time AT&T data and telecom offerings...</p>
+          <p className="text-lg text-muted-foreground">Looking up broadband availability for your address...</p>
         </div>
       </div>
     )
@@ -277,6 +287,119 @@ const OfferingsPage = ({ userAddress, geocodeData }) => {
           </div>
         </div>
       </div>
+
+      {/* Data Source Banner */}
+      {dataSource && (
+        <div className={`border-b ${
+          dataSource === 'fcc-bdc-database'
+            ? 'bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-800'
+            : 'bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800'
+        }`}>
+          <div className="max-w-7xl mx-auto px-4 py-2.5">
+            {dataSource === 'fcc-bdc-database' && pipelineMetadata ? (
+              <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-sm text-emerald-800 dark:text-emerald-200">
+                <div className="flex items-center font-medium">
+                  <Database className="h-4 w-4 mr-1.5" />
+                  FCC Broadband Data Collection
+                </div>
+                <span className="text-emerald-400">|</span>
+                <span>{pipelineMetadata.stateName || pipelineMetadata.state}</span>
+                {pipelineMetadata.county && (
+                  <>
+                    <span className="text-emerald-400">|</span>
+                    <span>{pipelineMetadata.county}</span>
+                  </>
+                )}
+                <span className="text-emerald-400">|</span>
+                <span className="font-mono text-xs">Census Block: {pipelineMetadata.censusBlock}</span>
+                {pipelineMetadata.dataAsOf && (
+                  <>
+                    <span className="text-emerald-400">|</span>
+                    <span className="flex items-center">
+                      <Clock className="h-3 w-3 mr-1" />
+                      Data as of {pipelineMetadata.dataAsOf}
+                    </span>
+                  </>
+                )}
+                {pipelineMetadata.pipelineTimeMs && (
+                  <>
+                    <span className="text-emerald-400">|</span>
+                    <span className="text-emerald-600 dark:text-emerald-400 text-xs">{pipelineMetadata.pipelineTimeMs}ms</span>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center text-sm text-amber-800 dark:text-amber-200">
+                <Info className="h-4 w-4 mr-1.5 flex-shrink-0" />
+                {pipelineMetadata && pipelineMetadata.covered === false ? (
+                  <span>
+                    Your state ({pipelineMetadata.state}) is not yet in our FCC database. We currently cover CA, GA, IL, NY, TX. Showing results from alternative sources.
+                  </span>
+                ) : (
+                  <span>
+                    Results from {dataSource === 'zip-based' ? 'ZIP code lookup' : dataSource === 'fcc-api' ? 'FCC Broadband Map API' : 'provider APIs'}. FCC database unavailable for this location.
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Summary Stats Bar (FCC data only) */}
+      {dataSource === 'fcc-bdc-database' && pipelineMetadata && (
+        <div className="bg-white dark:bg-gray-900 border-b">
+          <div className="max-w-7xl mx-auto px-4 py-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="flex items-center space-x-2 bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2">
+                <Activity className="h-4 w-4 text-blue-500" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Providers</p>
+                  <p className="font-semibold text-sm">{pipelineMetadata.totalProviders}</p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2 bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2">
+                <Wifi className="h-4 w-4 text-purple-500" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Services</p>
+                  <p className="font-semibold text-sm">{pipelineMetadata.totalServices}</p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2 bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2">
+                <Zap className="h-4 w-4 text-yellow-500" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Max Download</p>
+                  <p className="font-semibold text-sm">
+                    {pipelineMetadata.summary?.maxDownloadAvailable >= 1000
+                      ? `${(pipelineMetadata.summary.maxDownloadAvailable / 1000).toFixed(pipelineMetadata.summary.maxDownloadAvailable % 1000 === 0 ? 0 : 1)} Gbps`
+                      : `${pipelineMetadata.summary?.maxDownloadAvailable || '—'} Mbps`}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2 bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2">
+                <Shield className="h-4 w-4 text-emerald-500" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Technologies</p>
+                  <div className="flex gap-1 mt-0.5">
+                    {pipelineMetadata.summary?.hasFiber && (
+                      <span className="text-[10px] font-medium bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 rounded">Fiber</span>
+                    )}
+                    {pipelineMetadata.summary?.hasCable && (
+                      <span className="text-[10px] font-medium bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded">Cable</span>
+                    )}
+                    {pipelineMetadata.summary?.hasDsl && (
+                      <span className="text-[10px] font-medium bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded">DSL</span>
+                    )}
+                    {!pipelineMetadata.summary?.hasFiber && !pipelineMetadata.summary?.hasCable && !pipelineMetadata.summary?.hasDsl && (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto p-4">
@@ -368,6 +491,30 @@ const OfferingsPage = ({ userAddress, geocodeData }) => {
                         </div>
                       </div>
 
+                      {/* Technology & Low-Latency Badges */}
+                      {(offering.technologyCode || offering.lowLatency) && (
+                        <div className="flex items-center gap-2 mb-3">
+                          {offering.technologyCode === 50 && (
+                            <span className="text-xs font-semibold bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full">Fiber</span>
+                          )}
+                          {offering.technologyCode === 40 && (
+                            <span className="text-xs font-semibold bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">Cable</span>
+                          )}
+                          {offering.technologyCode === 10 && (
+                            <span className="text-xs font-semibold bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-full">DSL</span>
+                          )}
+                          {offering.technologyCode && ![50, 40, 10].includes(offering.technologyCode) && (
+                            <span className="text-xs font-semibold bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded-full">Tech {offering.technologyCode}</span>
+                          )}
+                          {offering.lowLatency && (
+                            <span className="text-xs font-medium bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 px-2 py-0.5 rounded-full flex items-center">
+                              <Zap className="h-3 w-3 mr-0.5" />
+                              Low Latency
+                            </span>
+                          )}
+                        </div>
+                      )}
+
                       <div className="grid grid-cols-1 gap-4 mb-4">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-2">
@@ -388,23 +535,26 @@ const OfferingsPage = ({ userAddress, geocodeData }) => {
                         </div>
                       </div>
 
-                      <div className="flex items-center space-x-2 mb-4">
-                        <div className="flex items-center">
-                          {[...Array(5)].map((_, i) => (
-                            <Star
-                              key={i}
-                              className={`h-4 w-4 ${
-                                i < Math.floor(offering.rating)
-                                  ? 'text-yellow-400 fill-current'
-                                  : 'text-gray-300'
-                              }`}
-                            />
-                          ))}
+                      {/* Star Rating - only show if reviews exist for this provider */}
+                      {providerReviews[offering.provider]?.rating > 0 && (
+                        <div className="flex items-center space-x-2 mb-4">
+                          <div className="flex items-center">
+                            {[...Array(5)].map((_, i) => (
+                              <Star
+                                key={i}
+                                className={`h-4 w-4 ${
+                                  i < Math.floor(providerReviews[offering.provider].rating)
+                                    ? 'text-yellow-400 fill-current'
+                                    : 'text-gray-300'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          <span className="text-sm text-muted-foreground">
+                            {providerReviews[offering.provider].rating} rating
+                          </span>
                         </div>
-                        <span className="text-sm text-muted-foreground">
-                          {offering.rating} rating
-                        </span>
-                      </div>
+                      )}
 
                       <div className="space-y-2 mb-4">
                         {offering.features.map((feature, index) => (
@@ -480,6 +630,17 @@ const OfferingsPage = ({ userAddress, geocodeData }) => {
                   </Button>
                 </div>
               )}
+
+              {/* FCC Disclaimer */}
+              {dataSource === 'fcc-bdc-database' && pipelineMetadata && (
+                <div className="mt-6 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    <Info className="h-3 w-3 inline mr-1 relative -top-px" />
+                    This data is sourced from the FCC Broadband Data Collection (BDC), which reflects what providers report they can offer at the census-block level. Actual availability at your specific address may vary. Contact providers to confirm service.
+                    {pipelineMetadata.dataAsOf && ` Data as of ${pipelineMetadata.dataAsOf}.`}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -489,7 +650,10 @@ const OfferingsPage = ({ userAddress, geocodeData }) => {
       <ChatbotWidget
         offerings={offerings}
         reviews={providerReviews}
+        reviewsLoading={reviewsLoading}
         userAddress={userAddress}
+        pipelineMetadata={pipelineMetadata}
+        dataSource={dataSource}
       />
     </div>
   )

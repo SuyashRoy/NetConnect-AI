@@ -98,7 +98,7 @@ export const fetchProviderReviews = async (providerName, coordinates) => {
   const cacheKey = `${providerName}-${coordinates[0].toFixed(4)}-${coordinates[1].toFixed(4)}`;
 
   // Check cache first
-  const cached = reviewsCache.get(cacheKey);
+  const cached = await reviewsCache.get(cacheKey);
   if (cached) {
     console.log(`Reviews cache hit for ${providerName}`);
     return cached;
@@ -138,7 +138,7 @@ export const fetchProviderReviews = async (providerName, coordinates) => {
     };
 
     // Cache the result
-    reviewsCache.set(cacheKey, reviewData);
+    await reviewsCache.set(cacheKey, reviewData);
 
     console.log(`Fetched ${reviewData.reviews.length} reviews for ${providerName}`);
 

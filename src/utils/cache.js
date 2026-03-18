@@ -1,73 +1,62 @@
 /**
  * Cache Utility
- * Provides localStorage-based caching with TTL (time-to-live) support
+ * Provides MongoDB-backed caching via the server's /api/cache endpoints.
+ * All methods are async and fail silently (return null / do nothing) on errors.
  */
 
-/**
- * Simple cache class with TTL support
- */
 class Cache {
   /**
    * Create a cache instance
-   * @param {string} name - Cache namespace
-   * @param {number} ttlMinutes - Time-to-live in minutes (default: 60)
+   * @param {string} name - Cache namespace (maps to MongoDB collection)
+   * @param {number} ttlMinutes - Default TTL in minutes
    */
   constructor(name, ttlMinutes = 60) {
     this.name = name;
-    this.ttl = ttlMinutes * 60 * 1000; // Convert to milliseconds
+    this.ttlMinutes = ttlMinutes;
   }
 
   /**
    * Set a value in cache
    * @param {string} key - Cache key
-   * @param {*} value - Value to cache (will be JSON serialized)
+   * @param {*} value - Value to cache
    */
-  set(key, value) {
+  async set(key, value) {
     try {
-      const item = {
-        value,
-        timestamp: Date.now(),
-        expires: Date.now() + this.ttl
-      };
+      const res = await fetch(`/api/cache/${this.name}/${encodeURIComponent(key)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value, ttlMinutes: this.ttlMinutes }),
+      });
 
-      const cacheKey = `${this.name}:${key}`;
-      localStorage.setItem(cacheKey, JSON.stringify(item));
+      if (!res.ok) throw new Error(`Cache set failed: ${res.status}`);
 
-      console.log(`Cache set: ${cacheKey} (expires in ${this.ttl / 60000} minutes)`);
+      console.log(`Cache set: ${this.name}:${key} (TTL: ${this.ttlMinutes} min)`);
     } catch (error) {
-      console.error('Error setting cache:', error);
+      console.warn('Cache set error (falling back silently):', error.message);
     }
   }
 
   /**
    * Get a value from cache
    * @param {string} key - Cache key
-   * @returns {*} Cached value or null if not found/expired
+   * @returns {Promise<*>} Cached value or null
    */
-  get(key) {
+  async get(key) {
     try {
-      const cacheKey = `${this.name}:${key}`;
-      const itemStr = localStorage.getItem(cacheKey);
+      const res = await fetch(`/api/cache/${this.name}/${encodeURIComponent(key)}`);
 
-      if (!itemStr) {
-        return null;
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(`Cache get failed: ${res.status}`);
+
+      const data = await res.json();
+      if (data.hit) {
+        console.log(`Cache hit: ${this.name}:${key}`);
+        return data.value;
       }
 
-      const item = JSON.parse(itemStr);
-
-      // Check if expired
-      if (Date.now() > item.expires) {
-        console.log(`Cache expired: ${cacheKey}`);
-        this.delete(key);
-        return null;
-      }
-
-      const age = Math.round((Date.now() - item.timestamp) / 60000);
-      console.log(`Cache hit: ${cacheKey} (age: ${age} minutes)`);
-
-      return item.value;
+      return null;
     } catch (error) {
-      console.error('Error getting cache:', error);
+      console.warn('Cache get error (falling back silently):', error.message);
       return null;
     }
   }
@@ -76,48 +65,37 @@ class Cache {
    * Delete a value from cache
    * @param {string} key - Cache key
    */
-  delete(key) {
+  async delete(key) {
     try {
-      const cacheKey = `${this.name}:${key}`;
-      localStorage.removeItem(cacheKey);
-      console.log(`Cache deleted: ${cacheKey}`);
+      await fetch(`/api/cache/${this.name}/${encodeURIComponent(key)}`, {
+        method: 'DELETE',
+      });
+      console.log(`Cache deleted: ${this.name}:${key}`);
     } catch (error) {
-      console.error('Error deleting cache:', error);
+      console.warn('Cache delete error (falling back silently):', error.message);
     }
   }
 
   /**
    * Clear all cache entries for this namespace
    */
-  clear() {
+  async clear() {
     try {
-      const prefix = `${this.name}:`;
-      const keysToDelete = [];
-
-      // Find all keys with our prefix
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(prefix)) {
-          keysToDelete.push(key);
-        }
-      }
-
-      // Delete them
-      keysToDelete.forEach(key => localStorage.removeItem(key));
-
-      console.log(`Cache cleared: ${this.name} (${keysToDelete.length} items)`);
+      await fetch(`/api/cache/${this.name}`, { method: 'DELETE' });
+      console.log(`Cache cleared: ${this.name}`);
     } catch (error) {
-      console.error('Error clearing cache:', error);
+      console.warn('Cache clear error (falling back silently):', error.message);
     }
   }
 
   /**
    * Check if a key exists and is not expired
    * @param {string} key - Cache key
-   * @returns {boolean} True if key exists and is valid
+   * @returns {Promise<boolean>}
    */
-  has(key) {
-    return this.get(key) !== null;
+  async has(key) {
+    const value = await this.get(key);
+    return value !== null;
   }
 }
 
