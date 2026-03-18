@@ -184,13 +184,36 @@ const OfferingsPage = ({ userAddress, geocodeData }) => {
 
   const getColorClasses = (color) => {
     const colors = {
-      blue: 'border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950',
-      green: 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950',
-      purple: 'border-purple-200 bg-purple-50 dark:border-purple-800 dark:bg-purple-950',
-      orange: 'border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950',
-      red: 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950'
+      blue: 'border-blue-200 bg-blue-50/60 dark:border-blue-800/50 dark:bg-blue-950/30',
+      green: 'border-green-200 bg-green-50/60 dark:border-green-800/50 dark:bg-green-950/30',
+      purple: 'border-purple-200 bg-purple-50/60 dark:border-purple-800/50 dark:bg-purple-950/30',
+      orange: 'border-orange-200 bg-orange-50/60 dark:border-orange-800/50 dark:bg-orange-950/30',
+      red: 'border-red-200 bg-red-50/60 dark:border-red-800/50 dark:bg-red-950/30'
     }
     return colors[color] || colors.blue
+  }
+
+  // Static icon container classes (dynamic Tailwind classes like bg-${color}-100 don't compile)
+  const getIconBgClass = (color) => {
+    const map = {
+      blue: 'bg-blue-100 dark:bg-blue-900/50',
+      green: 'bg-green-100 dark:bg-green-900/50',
+      purple: 'bg-purple-100 dark:bg-purple-900/50',
+      orange: 'bg-orange-100 dark:bg-orange-900/50',
+      red: 'bg-red-100 dark:bg-red-900/50',
+    }
+    return map[color] || map.blue
+  }
+
+  const getIconColorClass = (color) => {
+    const map = {
+      blue: 'text-blue-600 dark:text-blue-400',
+      green: 'text-green-600 dark:text-green-400',
+      purple: 'text-purple-600 dark:text-purple-400',
+      orange: 'text-orange-600 dark:text-orange-400',
+      red: 'text-red-600 dark:text-red-400',
+    }
+    return map[color] || map.blue
   }
 
   // Pagination calculations
@@ -263,7 +286,7 @@ const OfferingsPage = ({ userAddress, geocodeData }) => {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <div className="bg-white dark:bg-gray-900 border-b shadow-sm">
+      <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
@@ -348,7 +371,7 @@ const OfferingsPage = ({ userAddress, geocodeData }) => {
 
       {/* Summary Stats Bar (FCC data only) */}
       {dataSource === 'fcc-bdc-database' && pipelineMetadata && (
-        <div className="bg-white dark:bg-gray-900 border-b">
+        <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
           <div className="max-w-7xl mx-auto px-4 py-3">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="flex items-center space-x-2 bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2">
@@ -402,247 +425,240 @@ const OfferingsPage = ({ userAddress, geocodeData }) => {
       )}
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto p-4">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-200px)]">
-          {/* Map Section */}
-          <div className="order-2 lg:order-1">
-            <Card className="h-full">
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <MapPin className="h-5 w-5 mr-2" />
-                  Your Location
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0 h-[calc(100%-80px)]">
-                <MapContainer
-                  center={mapCenter}
-                  zoom={13}
-                  style={{ height: '100%', width: '100%' }}
-                  className="rounded-b-lg"
-                >
-                  <TileLayer
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  />
-                  <Marker position={mapCenter}>
-                    <Popup>
-                      <div className="text-center">
-                        <p className="font-semibold">Your Location</p>
-                        <p className="text-sm text-gray-600">{userAddress}</p>
-                      </div>
-                    </Popup>
-                  </Marker>
-                </MapContainer>
-              </CardContent>
-            </Card>
+      <div className="max-w-7xl mx-auto p-4 space-y-6">
+        {/* Map Section — compact strip */}
+        <Card className="overflow-hidden border dark:border-gray-700">
+          <div className="flex items-center justify-between px-4 py-2 bg-gray-50 dark:bg-gray-800/50 border-b dark:border-gray-700">
+            <h3 className="text-sm font-medium flex items-center text-foreground">
+              <MapPin className="h-4 w-4 mr-1.5" />
+              Your Location
+            </h3>
           </div>
-
-          {/* Offerings Section */}
-          <div className="order-1 lg:order-2">
-            <div className="h-full flex flex-col">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold">Available Services</h2>
-                <div className="flex items-center space-x-2">
-                  <Badge variant="secondary">
-                    {offerings.length} total
-                  </Badge>
-                  <Badge variant="outline">
-                    Page {currentPage} of {totalPages}
-                  </Badge>
-                </div>
-              </div>
-
-              {/* Offerings Grid */}
-              <div className="grid grid-cols-1 gap-4 flex-1">
-              {currentOfferings.map((offering) => {
-                const IconComponent = offering.icon
-                return (
-                  <Card key={offering.id} className={`transition-all duration-300 hover:shadow-lg ${getColorClasses(offering.color)}`}>
-                    <CardContent className="p-6">
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex items-center space-x-3">
-                          <div className={`p-2 rounded-lg bg-${offering.color}-100 dark:bg-${offering.color}-900`}>
-                            <IconComponent className={`h-6 w-6 text-${offering.color}-600 dark:text-${offering.color}-400`} />
-                          </div>
-                          <div>
-                            <h3 className="font-semibold text-lg">{offering.name}</h3>
-                            <p className="text-sm text-muted-foreground">
-                              {offering.provider ? `${offering.provider} • ${offering.type}` : offering.type}
-                            </p>
-                            {offering.source && (
-                              <p className="text-xs text-blue-600 dark:text-blue-400">
-                                {offering.source}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex flex-col items-end space-y-1">
-                          <Badge 
-                            variant={offering.availability === 'Available' ? 'default' : 'secondary'}
-                          >
-                            {offering.availability}
-                          </Badge>
-                          {offering.error && (
-                            <div className="flex items-center text-xs text-amber-600 dark:text-amber-400">
-                              <AlertCircle className="h-3 w-3 mr-1" />
-                              API Limited
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Technology & Low-Latency Badges */}
-                      {(offering.technologyCode || offering.lowLatency) && (
-                        <div className="flex items-center gap-2 mb-3">
-                          {offering.technologyCode === 50 && (
-                            <span className="text-xs font-semibold bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full">Fiber</span>
-                          )}
-                          {offering.technologyCode === 40 && (
-                            <span className="text-xs font-semibold bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">Cable</span>
-                          )}
-                          {offering.technologyCode === 10 && (
-                            <span className="text-xs font-semibold bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-full">DSL</span>
-                          )}
-                          {offering.technologyCode && ![50, 40, 10].includes(offering.technologyCode) && (
-                            <span className="text-xs font-semibold bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded-full">Tech {offering.technologyCode}</span>
-                          )}
-                          {offering.lowLatency && (
-                            <span className="text-xs font-medium bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 px-2 py-0.5 rounded-full flex items-center">
-                              <Zap className="h-3 w-3 mr-0.5" />
-                              Low Latency
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      <div className="grid grid-cols-1 gap-4 mb-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <Zap className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium">↓ {offering.speed}</span>
-                          </div>
-                          {offering.uploadSpeed && (
-                            <div className="flex items-center space-x-2">
-                              <span className="font-medium text-sm">↑ {offering.uploadSpeed}</span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <DollarSign className="h-4 w-4 text-muted-foreground" />
-                          <span className="font-medium">
-                            {offering.price.includes('$') ? offering.price : `$${offering.price}/month`}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Star Rating - only show if reviews exist for this provider */}
-                      {providerReviews[offering.provider]?.rating > 0 && (
-                        <div className="flex items-center space-x-2 mb-4">
-                          <div className="flex items-center">
-                            {[...Array(5)].map((_, i) => (
-                              <Star
-                                key={i}
-                                className={`h-4 w-4 ${
-                                  i < Math.floor(providerReviews[offering.provider].rating)
-                                    ? 'text-yellow-400 fill-current'
-                                    : 'text-gray-300'
-                                }`}
-                              />
-                            ))}
-                          </div>
-                          <span className="text-sm text-muted-foreground">
-                            {providerReviews[offering.provider].rating} rating
-                          </span>
-                        </div>
-                      )}
-
-                      <div className="space-y-2 mb-4">
-                        {offering.features.map((feature, index) => (
-                          <div key={index} className="flex items-center space-x-2">
-                            <div className="h-1.5 w-1.5 bg-green-500 rounded-full"></div>
-                            <span className="text-sm">{feature}</span>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Reviews Section */}
-                      {offering.provider && (
-                        <ReviewsSection
-                          provider={offering.provider}
-                          reviews={providerReviews[offering.provider]}
-                          isLoading={reviewsLoading && !providerReviews[offering.provider]}
-                        />
-                      )}
-
-                      <Button className="w-full mt-4" variant="default">
-                        View Details & Order
-                      </Button>
-                    </CardContent>
-                  </Card>
-                )
-              })}
-              </div>
-
-              {/* Pagination Controls */}
-              {totalPages > 1 && (
-                <div className="mt-6 flex items-center justify-center space-x-2">
-                  {/* Previous Button */}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={goToPreviousPage}
-                    disabled={currentPage === 1}
-                    className="h-9 w-9 p-0"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
-
-                  {/* Page Numbers */}
-                  <div className="flex items-center space-x-1">
-                    {getPageNumbers().map((page, index) => (
-                      page === '...' ? (
-                        <span key={`ellipsis-${index}`} className="px-2 text-muted-foreground">
-                          ...
-                        </span>
-                      ) : (
-                        <Button
-                          key={page}
-                          variant={currentPage === page ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={() => goToPage(page)}
-                          className="h-9 w-9 p-0"
-                        >
-                          {page}
-                        </Button>
-                      )
-                    ))}
+          <div className="h-[250px] lg:h-[280px]">
+            <MapContainer
+              center={mapCenter}
+              zoom={14}
+              style={{ height: '100%', width: '100%' }}
+            >
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              <Marker position={mapCenter}>
+                <Popup>
+                  <div className="text-center">
+                    <p className="font-semibold">Your Location</p>
+                    <p className="text-sm text-gray-600">{userAddress}</p>
                   </div>
+                </Popup>
+              </Marker>
+            </MapContainer>
+          </div>
+        </Card>
 
-                  {/* Next Button */}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={goToNextPage}
-                    disabled={currentPage === totalPages}
-                    className="h-9 w-9 p-0"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
-
-              {/* FCC Disclaimer */}
-              {dataSource === 'fcc-bdc-database' && pipelineMetadata && (
-                <div className="mt-6 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    <Info className="h-3 w-3 inline mr-1 relative -top-px" />
-                    This data is sourced from the FCC Broadband Data Collection (BDC), which reflects what providers report they can offer at the census-block level. Actual availability at your specific address may vary. Contact providers to confirm service.
-                    {pipelineMetadata.dataAsOf && ` Data as of ${pipelineMetadata.dataAsOf}.`}
-                  </p>
-                </div>
-              )}
+        {/* Offerings Section */}
+        <div className="flex flex-col">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold">Available Services</h2>
+            <div className="flex items-center space-x-2">
+              <Badge variant="secondary">
+                {offerings.length} total
+              </Badge>
+              <Badge variant="outline">
+                Page {currentPage} of {totalPages}
+              </Badge>
             </div>
           </div>
+
+          {/* Offerings Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {currentOfferings.map((offering) => {
+              const IconComponent = offering.icon
+              return (
+                <Card key={offering.id} className={`transition-all duration-300 hover:shadow-lg ${getColorClasses(offering.color)}`}>
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center space-x-3">
+                        <div className={`p-2 rounded-lg ${getIconBgClass(offering.color)}`}>
+                          <IconComponent className={`h-6 w-6 ${getIconColorClass(offering.color)}`} />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-lg">{offering.name}</h3>
+                          <p className="text-sm text-muted-foreground">
+                            {offering.provider ? `${offering.provider} • ${offering.type}` : offering.type}
+                          </p>
+                          {offering.source && (
+                            <p className="text-xs text-blue-600 dark:text-blue-400">
+                              {offering.source}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end space-y-1">
+                        <Badge
+                          variant={offering.availability === 'Available' ? 'default' : 'secondary'}
+                        >
+                          {offering.availability}
+                        </Badge>
+                        {offering.error && (
+                          <div className="flex items-center text-xs text-amber-600 dark:text-amber-400">
+                            <AlertCircle className="h-3 w-3 mr-1" />
+                            API Limited
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Technology & Low-Latency Badges */}
+                    {(offering.technologyCode || offering.lowLatency) && (
+                      <div className="flex items-center gap-2 mb-3">
+                        {offering.technologyCode === 50 && (
+                          <span className="text-xs font-semibold bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full">Fiber</span>
+                        )}
+                        {offering.technologyCode === 40 && (
+                          <span className="text-xs font-semibold bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">Cable</span>
+                        )}
+                        {offering.technologyCode === 10 && (
+                          <span className="text-xs font-semibold bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-full">DSL</span>
+                        )}
+                        {offering.technologyCode && ![50, 40, 10].includes(offering.technologyCode) && (
+                          <span className="text-xs font-semibold bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded-full">Tech {offering.technologyCode}</span>
+                        )}
+                        {offering.lowLatency && (
+                          <span className="text-xs font-medium bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 px-2 py-0.5 rounded-full flex items-center">
+                            <Zap className="h-3 w-3 mr-0.5" />
+                            Low Latency
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 gap-4 mb-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <Zap className="h-4 w-4 text-muted-foreground" />
+                          <span className="font-medium">↓ {offering.speed}</span>
+                        </div>
+                        {offering.uploadSpeed && (
+                          <div className="flex items-center space-x-2">
+                            <span className="font-medium text-sm">↑ {offering.uploadSpeed}</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <DollarSign className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium">
+                          {offering.price.includes('$') ? offering.price : `$${offering.price}/month`}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Star Rating - only show if reviews exist for this provider */}
+                    {providerReviews[offering.provider]?.rating > 0 && (
+                      <div className="flex items-center space-x-2 mb-4">
+                        <div className="flex items-center">
+                          {[...Array(5)].map((_, i) => (
+                            <Star
+                              key={i}
+                              className={`h-4 w-4 ${
+                                i < Math.floor(providerReviews[offering.provider].rating)
+                                  ? 'text-yellow-400 fill-current'
+                                  : 'text-gray-300'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        <span className="text-sm text-muted-foreground">
+                          {providerReviews[offering.provider].rating} rating
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="space-y-2 mb-4">
+                      {offering.features.map((feature, index) => (
+                        <div key={index} className="flex items-center space-x-2">
+                          <div className="h-1.5 w-1.5 bg-green-500 rounded-full"></div>
+                          <span className="text-sm">{feature}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Reviews Section */}
+                    {offering.provider && (
+                      <ReviewsSection
+                        provider={offering.provider}
+                        reviews={providerReviews[offering.provider]}
+                        isLoading={reviewsLoading && !providerReviews[offering.provider]}
+                      />
+                    )}
+
+                    <Button className="w-full mt-4" variant="default">
+                      View Details & Order
+                    </Button>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="mt-6 flex items-center justify-center space-x-2">
+              {/* Previous Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={goToPreviousPage}
+                disabled={currentPage === 1}
+                className="h-9 w-9 p-0"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+
+              {/* Page Numbers */}
+              <div className="flex items-center space-x-1">
+                {getPageNumbers().map((page, index) => (
+                  page === '...' ? (
+                    <span key={`ellipsis-${index}`} className="px-2 text-muted-foreground">
+                      ...
+                    </span>
+                  ) : (
+                    <Button
+                      key={page}
+                      variant={currentPage === page ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => goToPage(page)}
+                      className="h-9 w-9 p-0"
+                    >
+                      {page}
+                    </Button>
+                  )
+                ))}
+              </div>
+
+              {/* Next Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={goToNextPage}
+                disabled={currentPage === totalPages}
+                className="h-9 w-9 p-0"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+
+          {/* FCC Disclaimer */}
+          {dataSource === 'fcc-bdc-database' && pipelineMetadata && (
+            <div className="mt-6 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                <Info className="h-3 w-3 inline mr-1 relative -top-px" />
+                This data is sourced from the FCC Broadband Data Collection (BDC), which reflects what providers report they can offer at the census-block level. Actual availability at your specific address may vary. Contact providers to confirm service.
+                {pipelineMetadata.dataAsOf && ` Data as of ${pipelineMetadata.dataAsOf}.`}
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

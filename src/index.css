@@ -57,3 +57,8 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Contain Leaflet map z-index so it doesn't overlap fixed elements (chatbot) */
+.leaflet-container {
+  z-index: 0 !important;
+}

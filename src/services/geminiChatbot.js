@@ -18,7 +18,7 @@ const initializeGemini = () => {
     try {
       const apiKey = getGeminiKey();
       genAI = new GoogleGenerativeAI(apiKey);
-      model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       console.log('Gemini AI initialized successfully');
     } catch (error) {
       console.error('Failed to initialize Gemini AI:', error);
@@ -46,124 +46,79 @@ const techCodeToName = (code) => {
  * @returns {string} System prompt
  */
 const generateSystemPrompt = (offerings, userAddress, reviews, pipelineMetadata, dataSource) => {
-  // Build data source context
+  // Build data source context (compact)
   let dataSourceContext = '';
   if (dataSource === 'fcc-bdc-database' && pipelineMetadata) {
-    dataSourceContext = `
-**Data Source**: FCC Broadband Data Collection (official government data)
-- State: ${pipelineMetadata.stateName || pipelineMetadata.state}
-${pipelineMetadata.county ? `- County: ${pipelineMetadata.county}` : ''}
-- Census Block: ${pipelineMetadata.censusBlock}
-- Data as of: ${pipelineMetadata.dataAsOf || 'unknown'}
-- Total providers found: ${pipelineMetadata.totalProviders || 'N/A'}
-- Total service tiers: ${pipelineMetadata.totalServices || 'N/A'}
-- Note: FCC data reflects what providers REPORT they can offer at the census-block level. Actual availability at the exact address may vary. Prices are estimated ranges (FCC data does not include pricing).`;
+    dataSourceContext = `\n**Data Source**: FCC Broadband Data Collection | ${pipelineMetadata.stateName || pipelineMetadata.state} | Data as of ${pipelineMetadata.dataAsOf || 'unknown'} | ${pipelineMetadata.totalProviders} providers, ${pipelineMetadata.totalServices} services
+Note: FCC data shows what providers report at the census-block level. Prices are estimated (FCC doesn't include pricing).`;
   } else if (dataSource) {
-    dataSourceContext = `
-**Data Source**: ${dataSource === 'zip-based' ? 'ZIP code lookup' : dataSource === 'fcc-api' ? 'FCC Broadband Map API' : 'Provider APIs'} (FCC database was not available for this location)
-- Note: This data may be less precise than FCC census-block-level data.`;
+    const sourceName = dataSource === 'zip-based' ? 'ZIP code lookup' : dataSource === 'fcc-api' ? 'FCC API' : 'Provider APIs';
+    dataSourceContext = `\n**Data Source**: ${sourceName} (FCC database unavailable for this location)`;
   }
 
-  // Format offerings information with detailed reviews
-  const offeringsText = offerings.map((offering, idx) => {
-    const reviewInfo = reviews[offering.provider];
+  // Cap offerings to prevent prompt bloat (keep top 10 by download speed)
+  const cappedOfferings = offerings.length > 10
+    ? [...offerings].sort((a, b) => (b.maxDownloadMbps || 0) - (a.maxDownloadMbps || 0)).slice(0, 10)
+    : offerings;
 
-    // Technology info
+  // Format offerings — reviews listed once per provider, not per offering
+  const offeringsText = cappedOfferings.map((offering, idx) => {
     const techName = techCodeToName(offering.technologyCode);
-    const techLine = techName ? `   - Connection Type: ${techName}` : '';
-    const latencyLine = offering.lowLatency ? '   - Low Latency: Yes (good for gaming/video calls)' : '';
-
-    // Speed details
     const rawDownload = offering.maxDownloadMbps ? `${offering.maxDownloadMbps} Mbps` : offering.speed;
     const rawUpload = offering.maxUploadMbps ? `${offering.maxUploadMbps} Mbps` : (offering.uploadSpeed || 'N/A');
 
-    // Reviews section
-    let reviewSection = '   Customer Reviews: No reviews available for this provider';
+    let lines = `${idx + 1}. ${offering.name} (${offering.provider})`;
+    lines += `\n   Speed: ${rawDownload} down / ${rawUpload} up`;
+    if (techName) lines += ` | ${techName}`;
+    if (offering.lowLatency) lines += ` | Low Latency`;
+    lines += `\n   Price: $${offering.price}/month | ${offering.availability}`;
 
-    if (reviewInfo && reviewInfo.reviews && reviewInfo.reviews.length > 0) {
-      const reviewSummary = `Overall Rating: ${reviewInfo.overallRating}/5 stars (${reviewInfo.totalReviews} total reviews)`;
+    return lines;
+  }).join('\n');
 
-      // Include actual review text for AI analysis
-      const customerReviews = reviewInfo.reviews.map((review, rIdx) =>
-        `      Review ${rIdx + 1}: "${review.text}" - ${review.author} (${review.rating}/5 stars, ${review.relativeTime})`
-      ).join('\n');
-
-      reviewSection = `   Customer Reviews:\n      ${reviewSummary}\n${customerReviews}`;
-    }
-
-    return `${idx + 1}. ${offering.name}
-   - Provider: ${offering.provider}
-   - Download Speed: ${rawDownload}
-   - Upload Speed: ${rawUpload}
-${techLine}${latencyLine}
-   - Price: $${offering.price}/month
-   - Features: ${offering.features.join(', ')}
-   - Availability: ${offering.availability}
-   - Data Source: ${offering.source || dataSource || 'unknown'}
-${reviewSection}`;
-  }).join('\n\n');
-
-  // Determine if we have any reviews at all
+  // Build a separate, deduplicated reviews section (one entry per provider)
+  const seenProviders = new Set();
+  let reviewsText = '';
   const hasAnyReviews = Object.values(reviews).some(r => r.reviews?.length > 0);
 
-  return `You are a helpful and knowledgeable ISP (Internet Service Provider) recommendation assistant for NetConnect AI, a broadband comparison platform.
+  if (hasAnyReviews) {
+    const reviewEntries = [];
+    for (const offering of cappedOfferings) {
+      if (seenProviders.has(offering.provider)) continue;
+      seenProviders.add(offering.provider);
 
-**User's Location**: ${userAddress}
-${dataSourceContext}
+      const info = reviews[offering.provider];
+      if (!info || !info.reviews || info.reviews.length === 0) continue;
 
-**Available Internet Providers in this area** (${offerings.length} plans):
+      let entry = `${offering.provider}: ${info.overallRating}/5 (${info.totalReviews} reviews)`;
+      // Include up to 3 reviews, truncated to 150 chars each
+      const snippets = info.reviews.slice(0, 3).map((r, i) => {
+        const text = r.text.length > 150 ? r.text.slice(0, 147) + '...' : r.text;
+        return `  ${i + 1}. "${text}" — ${r.author} (${r.rating}/5, ${r.relativeTime})`;
+      });
+      entry += '\n' + snippets.join('\n');
+      reviewEntries.push(entry);
+    }
+    if (reviewEntries.length > 0) {
+      reviewsText = `\n\n**Customer Reviews**:\n${reviewEntries.join('\n\n')}`;
+    }
+  }
 
-${offeringsText}
+  return `You are an ISP recommendation assistant for NetConnect AI.
 
-**Your Role and Guidelines**:
+**Location**: ${userAddress}${dataSourceContext}
 
-1. **Be Conversational and Friendly**: Use a warm, helpful tone. Ask clarifying questions to understand the user's needs.
+**Available Plans** (${offerings.length} total${cappedOfferings.length < offerings.length ? `, showing top ${cappedOfferings.length}` : ''}):
+${offeringsText}${reviewsText}
 
-2. **Ask About Usage Patterns**: Inquire about:
-   - Primary internet usage (streaming, gaming, work from home, general browsing)
-   - Number of people/devices in household
-   - Budget constraints
-   - Need for high upload speeds (for video calls, content creation, etc.)
-   - Whether low latency matters (gaming, real-time video)
-   - Contract preferences (month-to-month vs. annual)
+**Guidelines**:
+- Ask about usage (streaming/gaming/WFH), household size, budget, and latency needs
+- Recommend plans based on user needs: gamers need low latency + fiber; streamers need high download; WFH needs reliability + upload
+- Connection types: Fiber (best, symmetric speeds) > Cable (good download, weak upload) > DSL (slowest)${hasAnyReviews ? '\n- Reference customer reviews when relevant — cite specific feedback' : '\n- No reviews available — focus on technical specs'}
+- Be concise (3-5 sentences). Only reference data provided above.
+- If prices say "est.", explain FCC data doesn't include exact pricing.
 
-3. **Make Smart Recommendations Based on User Needs**:
-   - For gamers: Prioritize low-latency connections (Fiber > Cable > DSL) and upload speed
-   - For streamers/large households: Prioritize high download speeds
-   - For work from home: Prioritize reliability, upload speed, and low latency
-   - For budget-conscious: Find the best value at needed speed tiers
-   - For general browsing: Most plans will work, focus on price and reliability
-   - Always explain WHY a plan is a good fit for their specific use case
-
-4. **Understand Connection Types**:
-   - Fiber (tech code 50): Fastest, lowest latency, symmetric upload/download, best for gaming and WFH
-   - Cable (tech code 40): Good speeds, higher latency than fiber, upload speeds much lower than download
-   - DSL (tech code 10): Slowest, uses phone lines, but widely available${hasAnyReviews ? `
-
-5. **Analyze Customer Reviews Deeply**:
-   - Read through the actual customer review text above
-   - Identify common complaints or praise for each provider
-   - Notice patterns in customer feedback (reliability, customer service, installation, etc.)
-   - Use real customer quotes to support your recommendations
-   - Be aware of recent vs. old reviews (check the relative time)
-   - If customers report frequent outages, mention it even if speeds look good
-   - Balance star ratings with the content of reviews
-
-6. **Cite Specific Evidence**:
-   - Reference actual customer quotes from reviews when relevant
-   - Example: "Based on customer reviews, AT&T customers mention [specific feedback]"
-   - Be transparent about what real customers are saying` : `
-
-5. **No Customer Reviews Available**:
-   - Customer reviews have not been loaded for these providers
-   - Focus your recommendations on technical specifications (speed, technology type, latency)
-   - Be transparent that you don't have customer experience data to reference`}
-
-${hasAnyReviews ? '7' : '6'}. **Don't Make Things Up**: Only reference information from the offerings and reviews above. If you don't have certain information (like exact pricing from FCC data), say so honestly.
-
-${hasAnyReviews ? '8' : '7'}. **Keep Responses Concise**: Aim for 3-5 sentences per response unless the user asks for detailed comparisons.
-
-Start by greeting the user and asking what's most important to them when choosing an internet provider.`;
+Start by asking what matters most to the user.`;
 };
 
 /**
@@ -199,9 +154,8 @@ export const createChatSession = async (offerings, userAddress, reviews, pipelin
       ],
       generationConfig: {
         temperature: 0.7,
-        topK: 40,
         topP: 0.95,
-        maxOutputTokens: 800, // Increased to allow for citing reviews
+        maxOutputTokens: 800,
       },
     });
 
@@ -226,22 +180,42 @@ export const sendMessage = async (chatSession, message) => {
 
     const result = await chatSession.sendMessage(message);
     const response = result.response;
+
+    // Check for blocked responses
+    if (!response) {
+      console.warn('Empty response from Gemini');
+      return "I wasn't able to generate a response. Please try rephrasing your question.";
+    }
+
+    // Check if response was blocked by safety filters
+    if (response.promptFeedback?.blockReason) {
+      console.warn('Response blocked:', response.promptFeedback.blockReason);
+      return "I wasn't able to answer that question due to content restrictions. Please try a different question about your broadband options.";
+    }
+
     const text = response.text();
+    if (!text || text.trim().length === 0) {
+      return "I wasn't able to generate a response. Could you try asking in a different way?";
+    }
 
     console.log('Received response:', text.substring(0, 100) + '...');
-
     return text;
 
   } catch (error) {
-    console.error('Error sending message:', error);
+    console.error('Error sending message:', error?.message || error);
+    console.error('Full error:', JSON.stringify(error, Object.getOwnPropertyNames(error || {}), 2));
 
     // Return helpful error message
-    if (error.message?.includes('API key')) {
+    if (error.message?.includes('API key') || error.message?.includes('API_KEY')) {
       return "I'm having trouble connecting to the AI service. Please check your API configuration.";
-    } else if (error.message?.includes('quota')) {
-      return "I've reached my usage limit for now. Please try again later or contact support.";
+    } else if (error.message?.includes('quota') || error.message?.includes('RATE_LIMIT')) {
+      return "I've reached my usage limit for now. Please try again in a minute.";
+    } else if (error.message?.includes('SAFETY')) {
+      return "I wasn't able to answer that due to content restrictions. Please try a different question about your broadband options.";
+    } else if (error.message?.includes('not found') || error.message?.includes('404')) {
+      return "The AI model is temporarily unavailable. Please try again later.";
     } else {
-      return "Sorry, I encountered an error. Please try rephrasing your question.";
+      return `I encountered a temporary issue (${error.message?.substring(0, 80) || 'unknown error'}). Please try again.`;
     }
   }
 };

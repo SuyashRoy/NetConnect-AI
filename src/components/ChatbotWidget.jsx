@@ -19,9 +19,17 @@ const ChatbotWidget = ({ offerings, reviews, reviewsLoading, userAddress, pipeli
   const [error, setError] = useState(null);
   const [reviewsIncorporated, setReviewsIncorporated] = useState(false);
   const messagesEndRef = useRef(null);
+  const initAttempted = useRef(false);
 
   // Check if Gemini is available
   const geminiAvailable = isGeminiAvailable();
+
+  // Auto-open chatbot when offerings are loaded
+  useEffect(() => {
+    if (offerings.length > 0 && geminiAvailable) {
+      setIsOpen(true);
+    }
+  }, [offerings, geminiAvailable]);
 
   // Scroll to bottom when messages change
   const scrollToBottom = () => {
@@ -34,7 +42,7 @@ const ChatbotWidget = ({ offerings, reviews, reviewsLoading, userAddress, pipeli
 
   // Initialize chat when widget opens AND reviews are done loading
   useEffect(() => {
-    if (isOpen && !chatSession && offerings.length > 0 && geminiAvailable && !reviewsLoading) {
+    if (isOpen && !chatSession && !isLoading && !initAttempted.current && offerings.length > 0 && geminiAvailable && !reviewsLoading) {
       initializeChat();
     }
   }, [isOpen, offerings, geminiAvailable, reviewsLoading]);
@@ -64,6 +72,8 @@ const ChatbotWidget = ({ offerings, reviews, reviewsLoading, userAddress, pipeli
   };
 
   const initializeChat = async () => {
+    if (initAttempted.current) return;
+    initAttempted.current = true;
     setIsLoading(true);
     setError(null);
 
@@ -71,7 +81,12 @@ const ChatbotWidget = ({ offerings, reviews, reviewsLoading, userAddress, pipeli
       const hasReviews = reviews && Object.keys(reviews).length > 0;
       if (hasReviews) setReviewsIncorporated(true);
 
-      const session = await createChatSession(offerings, userAddress, reviews || {}, pipelineMetadata, dataSource);
+      // Timeout protection — abort if Gemini takes too long
+      const sessionPromise = createChatSession(offerings, userAddress, reviews || {}, pipelineMetadata, dataSource);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Chat initialization timed out')), 30000)
+      );
+      const session = await Promise.race([sessionPromise, timeoutPromise]);
       setChatSession(session);
 
       // Add welcome message with context awareness
@@ -87,7 +102,7 @@ const ChatbotWidget = ({ offerings, reviews, reviewsLoading, userAddress, pipeli
 
     } catch (error) {
       console.error('Failed to initialize chatbot:', error);
-      setError('Unable to start chat. Please check your internet connection.');
+      setError('Unable to start chat. Please try again.');
 
       setMessages([{
         text: "Sorry, I'm having trouble connecting right now. Please make sure your Gemini API key is configured in the .env file.",
@@ -115,7 +130,12 @@ const ChatbotWidget = ({ offerings, reviews, reviewsLoading, userAddress, pipeli
     setIsLoading(true);
 
     try {
-      const response = await sendMessage(chatSession, userMessage);
+      // Timeout protection for message responses (30s — Gemini can be slow)
+      const responsePromise = sendMessage(chatSession, userMessage);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), 30000)
+      );
+      const response = await Promise.race([responsePromise, timeoutPromise]);
 
       // Add AI response
       setMessages(prev => [...prev, {
@@ -125,9 +145,12 @@ const ChatbotWidget = ({ offerings, reviews, reviewsLoading, userAddress, pipeli
       }]);
 
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('Error in chat widget:', error);
+      const errorText = error.message === 'timeout'
+        ? "The AI assistant is taking too long to respond. Please try again."
+        : "Sorry, I encountered an error processing your message. Please try again.";
       setMessages(prev => [...prev, {
-        text: "Sorry, I encountered an error processing your message. Please try again.",
+        text: errorText,
         isUser: false,
         timestamp: new Date()
       }]);
@@ -152,8 +175,12 @@ const ChatbotWidget = ({ offerings, reviews, reviewsLoading, userAddress, pipeli
   if (!isOpen) {
     return (
       <Button
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 rounded-full h-14 px-6 shadow-lg hover:shadow-xl transition-all duration-300 z-50 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+        onClick={() => {
+          // Reset init guard so re-opening can retry if previous attempt failed
+          if (!chatSession) initAttempted.current = false;
+          setIsOpen(true);
+        }}
+        className="fixed bottom-6 right-6 rounded-full h-14 px-6 shadow-lg hover:shadow-xl transition-all duration-300 z-[1000] bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 dark:from-sky-400 dark:to-indigo-400 dark:hover:from-sky-500 dark:hover:to-indigo-500 dark:text-gray-900 dark:font-semibold"
       >
         <MessageCircle className="h-5 w-5 mr-2" />
         Ask AI Assistant
@@ -163,7 +190,7 @@ const ChatbotWidget = ({ offerings, reviews, reviewsLoading, userAddress, pipeli
 
   // Open state - chat window
   return (
-    <Card className="fixed bottom-6 right-6 w-96 h-[600px] flex flex-col shadow-2xl z-50 border-2 border-blue-200 dark:border-blue-800">
+    <Card className="fixed bottom-6 right-6 w-96 h-[600px] flex flex-col shadow-2xl z-[1000] border-2 border-blue-200 dark:border-blue-800">
       {/* Header */}
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
         <div className="flex items-center space-x-2">
